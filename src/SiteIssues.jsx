@@ -1,93 +1,74 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Plus, CheckCircle, Camera, X } from 'lucide-react';
+import { supabase } from './supabaseClient';
+import { AlertTriangle, CheckCircle, Plus, X } from 'lucide-react';
 
 const SiteIssues = () => {
   const [issues, setIssues] = useState([]);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [newIssue, setNewIssue] = useState({ title: '', priority: 'MEDIUM' });
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [newIssue, setNewIssue] = useState('');
 
-  // Load Issues
   useEffect(() => {
-    const saved = localStorage.getItem('nexus_issues');
-    if (saved) setIssues(JSON.parse(saved));
+    fetchIssues();
   }, []);
 
-  const handleSaveIssue = () => {
-    if (!newIssue.title) return;
-    const issue = {
-      id: Date.now(),
-      title: newIssue.title,
-      date: 'Just now',
-      status: 'OPEN',
-      priority: newIssue.priority,
-      reporter: 'Supervisor'
-    };
-    const updated = [issue, ...issues];
-    setIssues(updated);
-    localStorage.setItem('nexus_issues', JSON.stringify(updated));
-    setIsFormOpen(false);
-    setNewIssue({ title: '', priority: 'MEDIUM' });
+  const fetchIssues = async () => {
+    const { data } = await supabase.from('nexus_issues').select('*').eq('status', 'OPEN').order('created_at', { ascending: false });
+    if (data) setIssues(data);
   };
 
-  const handleResolve = (id) => {
-    const updated = issues.map(i => i.id === id ? { ...i, status: 'RESOLVED' } : i);
-    setIssues(updated);
-    localStorage.setItem('nexus_issues', JSON.stringify(updated));
+  const handleAddIssue = async () => {
+    if (!newIssue) return;
+    await supabase.from('nexus_issues').insert([{ title: newIssue, priority: 'HIGH', status: 'OPEN' }]);
+    setNewIssue('');
+    setIsAddOpen(false);
+    fetchIssues();
+  };
+
+  const handleResolve = async (id) => {
+    await supabase.from('nexus_issues').update({ status: 'RESOLVED' }).eq('id', id);
+    fetchIssues(); // Refresh list
   };
 
   return (
-    <div className="p-6 pb-32 animate-in fade-in slide-in-from-bottom-4 duration-300">
-      
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-nexus-dark">Site Issues</h2>
-          <p className="text-nexus-muted text-sm">Report blockers & delays</p>
-        </div>
-        <button onClick={() => setIsFormOpen(true)} className="bg-red-500 text-white p-3 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-transform"><Plus className="w-5 h-5" /></button>
+    <div className="p-4 bg-white rounded-2xl shadow-card">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-bold text-nexus-dark flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-500" /> Active Issues
+        </h3>
+        <button onClick={() => setIsAddOpen(true)} className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100">
+            <Plus className="w-4 h-4" />
+        </button>
       </div>
 
-      {/* Add Issue Form */}
-      {isFormOpen && (
-        <div className="bg-red-50 border border-red-100 p-4 rounded-xl mb-6 animate-in zoom-in-95">
-            <div className="flex justify-between mb-2">
-                <span className="text-xs font-bold text-red-600 uppercase">New Report</span>
-                <button onClick={() => setIsFormOpen(false)}><X className="w-4 h-4 text-red-400" /></button>
-            </div>
+      {isAddOpen && (
+        <div className="mb-4 flex gap-2">
             <input 
-                autoFocus
                 type="text" 
-                placeholder="What is broken?" 
-                className="w-full p-3 rounded-lg text-sm font-bold mb-3 outline-none"
-                value={newIssue.title}
-                onChange={e => setNewIssue({...newIssue, title: e.target.value})}
+                placeholder="Describe issue..." 
+                className="flex-1 bg-slate-50 p-2 rounded-lg text-sm border border-slate-200 outline-none"
+                value={newIssue}
+                onChange={(e) => setNewIssue(e.target.value)}
             />
-            <div className="flex gap-2">
-                {['HIGH', 'MEDIUM', 'LOW'].map(p => (
-                    <button key={p} onClick={() => setNewIssue({...newIssue, priority: p})} className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-colors ${newIssue.priority === p ? 'bg-red-500 text-white' : 'bg-white text-slate-400'}`}>{p}</button>
-                ))}
-            </div>
-            <button onClick={handleSaveIssue} className="w-full bg-nexus-dark text-white py-3 rounded-lg font-bold text-xs mt-3">Submit Report</button>
+            <button onClick={handleAddIssue} className="bg-nexus-dark text-white px-3 rounded-lg text-xs font-bold">Add</button>
+            <button onClick={() => setIsAddOpen(false)} className="text-slate-400"><X className="w-5 h-5" /></button>
         </div>
       )}
 
-      <div className="space-y-4">
-        {issues.length === 0 && <p className="text-center text-slate-400 text-sm py-10">No active issues. Good job!</p>}
-        {issues.map(issue => (
-          <div key={issue.id} className={`bg-white p-5 rounded-2xl shadow-card border-l-4 ${issue.status === 'OPEN' ? 'border-red-500' : 'border-emerald-500'}`}>
-            <div className="flex justify-between items-start mb-2">
-              <div className="flex gap-3">
-                <div className={`mt-1 ${issue.status === 'OPEN' ? 'text-red-500' : 'text-emerald-500'}`}>
-                  {issue.status === 'OPEN' ? <AlertTriangle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
-                </div>
+      <div className="space-y-3">
+        {issues.length === 0 && <p className="text-center text-emerald-600 text-sm py-4 font-medium">All Clear! No issues.</p>}
+
+        {issues.map((issue) => (
+          <div key={issue.id} className="flex justify-between items-start p-3 bg-red-50/50 rounded-xl border border-red-100">
+            <div className="flex gap-3">
+                <div className="mt-1 w-2 h-2 rounded-full bg-red-500"></div>
                 <div>
-                  <h3 className={`font-bold ${issue.status === 'RESOLVED' ? 'text-slate-400 line-through' : 'text-nexus-dark'}`}>{issue.title}</h3>
-                  <p className="text-xs text-nexus-muted">{issue.date} • {issue.priority}</p>
+                    <p className="text-sm font-bold text-nexus-dark">{issue.title}</p>
+                    <p className="text-xs text-slate-400">{new Date(issue.created_at).toLocaleDateString()}</p>
                 </div>
-              </div>
             </div>
-            {issue.status === 'OPEN' && (
-              <button onClick={() => handleResolve(issue.id)} className="w-full mt-3 bg-slate-50 text-slate-500 py-2 rounded-lg text-xs font-bold active:bg-slate-200">Mark Resolved</button>
-            )}
+            <button onClick={() => handleResolve(issue.id)} className="text-emerald-600 hover:bg-emerald-50 p-1 rounded">
+                <CheckCircle className="w-5 h-5" />
+            </button>
           </div>
         ))}
       </div>

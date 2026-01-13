@@ -1,84 +1,57 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Search, History } from 'lucide-react';
+import { supabase } from './supabaseClient';
+import { Package, Plus, Minus, RefreshCw } from 'lucide-react';
 
 const SiteInventory = () => {
-  // Default Data
-  const defaultStock = [
-    { id: 1, name: 'Cement (UltraTech)', qty: 140, unit: 'Bags', color: 'bg-slate-100' },
-    { id: 2, name: 'Steel 10mm', qty: 250, unit: 'Kg', color: 'bg-slate-100' },
-    { id: 3, name: 'Red Bricks', qty: 4500, unit: 'Nos', color: 'bg-slate-100' },
-    { id: 4, name: 'River Sand', qty: 2, unit: 'Brass', color: 'bg-amber-50 border-amber-200' },
-  ];
+  const [inventory, setInventory] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const [stock, setStock] = useState([]);
-
-  // Load from Storage
   useEffect(() => {
-    const saved = localStorage.getItem('nexus_inventory');
-    if (saved) {
-        setStock(JSON.parse(saved));
-    } else {
-        setStock(defaultStock);
-        localStorage.setItem('nexus_inventory', JSON.stringify(defaultStock));
-    }
+    fetchInventory();
   }, []);
 
-  const handleLogUsage = (id, amount) => {
-    const updatedStock = stock.map(item => 
-      item.id === id ? { ...item, qty: Math.max(0, item.qty - amount) } : item
-    );
-    setStock(updatedStock);
-    localStorage.setItem('nexus_inventory', JSON.stringify(updatedStock)); // Sync
+  const fetchInventory = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('nexus_inventory').select('*').order('name');
+    if (data) setInventory(data);
+    setLoading(false);
+  };
+
+  const updateStock = async (id, currentQty, change) => {
+    const newQty = parseFloat(currentQty) + change;
+    if (newQty < 0) return; // Prevent negative stock
+
+    // Optimistic UI Update (Update screen before DB for speed)
+    setInventory(inventory.map(item => item.id === id ? { ...item, qty: newQty } : item));
+
+    // Update DB
+    await supabase.from('nexus_inventory').update({ qty: newQty }).eq('id', id);
   };
 
   return (
-    <div className="p-6 pb-32 animate-in fade-in slide-in-from-bottom-4 duration-300">
-      
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-nexus-dark">Site Stock</h2>
-          <p className="text-nexus-muted text-sm">Track materials on ground</p>
-        </div>
-        <div className="w-10 h-10 bg-white rounded-full shadow-sm flex items-center justify-center text-nexus-accent">
-          <Package className="w-5 h-5" />
-        </div>
+    <div className="p-4 bg-white rounded-2xl shadow-card">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-bold text-nexus-dark flex items-center gap-2">
+            <Package className="w-5 h-5 text-nexus-accent" /> Material Stock
+        </h3>
+        <button onClick={fetchInventory} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
-      {/* Stock List */}
       <div className="space-y-4">
-        {stock.map(item => (
-          <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-card border ${item.qty < 10 ? 'border-red-200' : 'border-slate-100'}`}>
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="font-bold text-nexus-dark text-lg">{item.name}</h3>
-                <p className="text-xs text-nexus-muted uppercase font-bold">Current Stock</p>
-              </div>
-              <div className="text-right">
-                <span className={`text-2xl font-bold ${item.qty < 10 ? 'text-red-500' : 'text-nexus-dark'}`}>
-                  {item.qty}
-                </span>
-                <span className="text-xs text-slate-400 font-bold ml-1">{item.unit}</span>
-              </div>
-            </div>
+        {inventory.length === 0 && <p className="text-center text-slate-400 text-sm py-4">Inventory empty.</p>}
 
-            {/* Quick Actions: Log Usage */}
-            <div className="bg-nexus-surface p-2 rounded-xl flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-400 ml-2 uppercase">Log Usage:</span>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => handleLogUsage(item.id, 1)}
-                  className="bg-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm active:scale-95 transition-transform"
-                >
-                  - 1
-                </button>
-                <button 
-                  onClick={() => handleLogUsage(item.id, 5)}
-                  className="bg-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm active:scale-95 transition-transform"
-                >
-                  - 5
-                </button>
-              </div>
+        {inventory.map((item) => (
+          <div key={item.id} className="flex justify-between items-center border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+            <div>
+                <p className="font-bold text-nexus-dark">{item.name}</p>
+                <p className="text-xs text-nexus-muted">{item.qty} {item.unit || 'Units'} Available</p>
+            </div>
+            <div className="flex items-center gap-3 bg-slate-50 rounded-lg p-1">
+                <button onClick={() => updateStock(item.id, item.qty, -1)} className="p-2 bg-white rounded shadow-sm text-red-500 active:scale-90 transition-transform"><Minus className="w-4 h-4" /></button>
+                <span className="font-bold text-sm min-w-[30px] text-center">{item.qty}</span>
+                <button onClick={() => updateStock(item.id, item.qty, 1)} className="p-2 bg-white rounded shadow-sm text-green-600 active:scale-90 transition-transform"><Plus className="w-4 h-4" /></button>
             </div>
           </div>
         ))}
