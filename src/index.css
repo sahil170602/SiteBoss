@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors: "Deep Slate & Amber" */
+  --color-nexus-dark: #0f172a;
+  --color-nexus-primary: #334155;
+  --color-nexus-accent: #f59e0b;
+  --color-nexus-surface: #f1f5f9;
+  --color-nexus-text: #1e293b;
+  --color-nexus-muted: #64748b;
+
+  /* Fonts & Shadows */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --shadow-floating: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* --- NATIVE APP TWEAKS --- */
+:root {
+  /* Handle Safe Areas (Notches) */
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
+}
+
+body {
+  background-color: var(--color-nexus-surface);
+  /* Prevent "Pull to Refresh" on mobile */
+  overscroll-behavior-y: none;
+  /* Prevent text selection (makes it feel like an app, not a site) */
+  user-select: none;
+  -webkit-user-select: none;
+  /* Remove blue highlight on tap */
+  -webkit-tap-highlight-color: transparent;
+  /* Better font rendering */
+  -webkit-font-smoothing: antialiased;
+  padding-top: var(--sat);
+  padding-bottom: var(--sab);
+}
+
+/* Allow text selection ONLY on inputs */
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Hide Scrollbars but keep functionality */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
