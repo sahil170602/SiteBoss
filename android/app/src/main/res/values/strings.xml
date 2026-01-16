@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SiteBoss</string>
+    <string name="title_activity_main">SiteBoss</string>
+    <string name="package_name">com.siteboss.app</string>
+    <string name="custom_url_scheme">com.siteboss.app</string>
+</resources>
