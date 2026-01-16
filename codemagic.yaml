@@ -1,30 +1,22 @@
 workflows:
-  android-debug-build:
-    name: Android Debug APK
-    max_build_duration: 30
-    instance_type: mac_mini_m1
+  android-apk:
+    name: SiteBoss APK
+    max_build_duration: 60
     environment:
-      node: latest
-      java: 21
+      node: 18
     scripts:
-      - name: Install Dependencies
-        script: |
-          npm install
-          
-      - name: Build Web App
-        script: |
-          npm run build
-          
+      - name: Install dependencies
+        script: npm install
+
+      - name: Build web app
+        script: npm run build
+
       - name: Sync Capacitor
-        script: |
-          npx cap add android || true
-          npx cap sync android
-          
-      - name: Build Android APK
+        script: npx cap sync android
+
+      - name: Build APK
         script: |
           cd android
-          chmod +x gradlew
           ./gradlew assembleDebug
-          
     artifacts:
-      - android/app/build/outputs/apk/debug/*.apk
+      - android/app/build/outputs/**/*.apk
