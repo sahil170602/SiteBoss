@@ -6,6 +6,7 @@ import ProjectDetails from './ProjectDetails';
 import Financials from './Financials'; 
 import Workers from './Workers'; 
 import Notifications from './Notifications'; 
+import Profile from './Profile';
 import { 
   LayoutDashboard, Map as MapIcon, Wallet, Users, Bell, 
   Search, Plus, MoreVertical, LogOut, Building2, Menu, X 
@@ -32,30 +33,56 @@ const Dashboard = ({ user, onLogout }) => {
   }, [activeTab, isModalOpen]); 
 
   const fetchDashboardData = async () => {
-    // 1. Fetch Projects (Live DB)
-    const { data: projData } = await supabase.from('nexus_projects').select('*').order('created_at', { ascending: false });
-    if (projData) setProjects(projData);
+  /* ---------------- PROJECTS ---------------- */
+  const { data: projData, error: projErr } = await supabase
+    .from('siteboss_projects')
+    .select('*')
+    .eq('owner_id', user.id)
+    .order('created_at', { ascending: false });
 
-    // 2. Fetch Stats
-    const activeSites = projData ? projData.length : 0;
+  if (!projErr && projData) {
+    setProjects(projData);
+  } else {
+    setProjects([]);
+  }
 
-    // Cash Outflow (Sum of Expenses)
-    const { data: txData } = await supabase.from('nexus_transactions').select('amount').eq('type', 'EXPENSE');
-    const outflow = txData ? txData.reduce((sum, t) => sum + t.amount, 0) : 0;
+  const activeSites = projData?.length || 0;
 
-    // Notifications Count
-    const { count: alertCount } = await supabase.from('nexus_notifications').select('*', { count: 'exact', head: true });
+  /* ---------------- EXPENSES ---------------- */
+const { data: txData } = await supabase
+  .from('siteboss_transactions')
+  .select('amount')
+  .eq('owner_id', user.id)
+  .eq('type', 'EXPENSE');
 
-    // Workers (Mock count or fetch from nexus_workers if populated)
-    const { count: workerCount } = await supabase.from('nexus_workers').select('*', { count: 'exact', head: true });
 
-    setStats({
-        activeSites,
-        totalWorkers: workerCount || 0,
-        cashOutflow: outflow,
-        notifications: alertCount || 0
-    });
-  };
+  const cashOutflow =
+    txData?.reduce((sum, t) => sum + Number(t.amount || 0), 0) || 0;
+
+  /* ---------------- NOTIFICATIONS ---------------- */
+const { count: alertCount } = await supabase
+  .from('siteboss_notifications')
+  .select('*', { count: 'exact', head: true })
+  .eq('owner_id', user.id)
+  .eq('read', false);
+
+
+  /* ---------------- WORKERS ---------------- */
+const { count: workerCount } = await supabase
+  .from('siteboss_workers')
+  .select('*', { count: 'exact', head: true })
+  .eq('owner_id', user.id)
+  .neq('status', 'INACTIVE');
+
+
+  setStats({
+    activeSites,
+    totalWorkers: workerCount || 0,
+    cashOutflow,
+    notifications: alertCount || 0
+  });
+};
+
 
   const handleCreateProject = (newProject) => {
     setProjects([newProject, ...projects]);
@@ -69,14 +96,16 @@ const Dashboard = ({ user, onLogout }) => {
   };
 
   const getPageTitle = () => {
-    if (selectedProject) return selectedProject.name;
-    if (activeTab === 'dashboard') return 'Overview';
-    if (activeTab === 'map') return 'Command Center';
-    if (activeTab === 'workers') return 'Staff Management';
-    if (activeTab === 'financials') return 'Financial Overview';
-    if (activeTab === 'notifications') return 'Alerts & Updates';
-    return 'Nexus';
-  };
+  if (selectedProject) return selectedProject.name;
+  if (activeTab === 'dashboard') return 'Dashboard';
+  if (activeTab === 'map') return 'Live Map';
+  if (activeTab === 'workers') return 'Site Workers';
+  if (activeTab === 'financials') return 'Financials';
+  if (activeTab === 'notifications') return 'Notifications';
+   if (activeTab === 'profile') return 'Profile'; 
+  return 'SiteBoss';
+};
+
 
   const statCards = [
     { title: 'Active Sites', value: stats.activeSites, change: 'Live Projects', icon: Building2, color: 'text-blue-500', bg: 'bg-blue-100' },
@@ -115,32 +144,55 @@ const Dashboard = ({ user, onLogout }) => {
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         
         {/* Header */}
-        <header className="h-16 md:h-20 bg-white border-b border-slate-100 flex items-center justify-between px-4 md:px-10 shrink-0 z-30">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 hover:bg-slate-100 rounded-lg"><Menu className="w-6 h-6 text-nexus-dark" /></button>
-            <div>
-              <h1 className="text-lg md:text-xl font-bold text-nexus-dark">{getPageTitle()}</h1>
-              <p className="text-xs text-nexus-muted hidden md:block">{new Date().toDateString()}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
-              <div className="text-right hidden md:block">
-                <p className="text-sm font-bold text-nexus-dark">{user.name}</p>
-                <p className="text-xs text-nexus-muted font-semibold">{user.companyName}</p>
-              </div>
-              <div className="w-10 h-10 bg-nexus-primary rounded-full flex items-center justify-center text-white font-bold border-2 border-white shadow-sm">{user.name.charAt(0)}</div>
-            </div>
-          </div>
-        </header>
+<header className="h-16 md:h-20 bg-white border-b border-slate-100 flex items-center justify-between px-4 md:px-10 shrink-0 z-30">
+  <div className="flex items-center gap-4">
+    <button
+      onClick={() => setSidebarOpen(true)}
+      className="md:hidden p-2 hover:bg-slate-100 rounded-lg"
+    >
+      <Menu className="w-6 h-6 text-nexus-dark" />
+    </button>
 
-        {/* Dynamic Content */}
-        <div className="flex-1 overflow-y-auto p-0 relative">
-          
-          {selectedProject ? (
-            <ProjectDetails project={selectedProject} onBack={() => setSelectedProject(null)} />
-          ) : (
-            <> 
+    <div>
+      <h1 className="text-lg md:text-xl font-bold text-nexus-dark">
+        {getPageTitle()}
+      </h1>
+      <p className="text-xs text-nexus-muted hidden md:block">
+        {new Date().toDateString()}
+      </p>
+    </div>
+  </div>
+
+  {/* ✅ PROFILE NAV (CLICKABLE AVATAR) */}
+  <div
+    onClick={() => handleNavClick('profile')}
+    className="flex items-center gap-3 pl-4 border-l border-slate-200 cursor-pointer"
+  >
+    <div className="text-right hidden md:block">
+      <p className="text-sm font-bold text-nexus-dark">{user.name}</p>
+      <p className="text-xs text-nexus-muted font-semibold">
+        {user.companyName}
+      </p>
+    </div>
+
+    <div className="w-10 h-10 bg-nexus-primary rounded-full flex items-center justify-center text-white font-bold border-2 border-white shadow-sm">
+      {user.name.charAt(0)}
+    </div>
+  </div>
+</header>
+
+
+       {/* CONTENT */}
+<div className="flex-1 overflow-y-auto">
+  {activeTab === 'profile' ? (
+    <Profile onLogout={onLogout} />
+  ) : selectedProject ? (
+    <ProjectDetails
+      project={selectedProject}
+      onBack={() => setSelectedProject(null)}
+    />
+  ) : (
+    <>
                 {/* DASHBOARD OVERVIEW */}
                 {activeTab === 'dashboard' && (
                   <div className="p-4 md:p-10 space-y-6 md:space-y-8 animate-in fade-in duration-500 pb-24">

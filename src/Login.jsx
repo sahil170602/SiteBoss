@@ -1,109 +1,183 @@
 import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
-import { HardHat, Key, Phone, User, Building2 } from 'lucide-react';
+import { Key, Phone, User, Building2 } from 'lucide-react';
 
 const Login = ({ onLoginSuccess }) => {
   const [loginMode, setLoginMode] = useState('OWNER'); 
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Owner State
   const [profile, setProfile] = useState({ mobile: '', name: '', companyName: '' });
-  
-  // Team State
   const [workerId, setWorkerId] = useState('');
 
-  // 1. OWNER LOGIN (Simple Pass-through)
-  const handleOwnerLogin = () => {
+  /* ================= OWNER LOGIN (REAL AUTH) ================= */
+
+  const handleOwnerLogin = async () => {
     if (!profile.mobile || !profile.name || !profile.companyName) {
-        return alert("Please fill all details");
+      return alert("Fill all details");
     }
-    
+
     setIsLoading(true);
-    setTimeout(() => { 
-      setIsLoading(false); 
-      // Log in immediately (in future we can save Owner profile to DB too)
-      onLoginSuccess({ 
-          ...profile, 
-          role: 'OWNER', 
-          id: Date.now() 
-      }); 
-    }, 1000);
+
+    // 1️⃣ Sign in anonymously (simple, OTP can be added later)
+    const { data: authData, error } = await supabase.auth.signInAnonymously();
+
+    if (error || !authData?.user) {
+      setIsLoading(false);
+      return alert("Login failed");
+    }
+
+    const authUser = authData.user;
+
+    // 2️⃣ Insert / upsert owner into siteboss_users
+   await supabase
+  .from('siteboss_users')
+  .upsert({
+    id: authUser.id,
+    role: 'OWNER',
+    name: profile.name,
+    mobile: profile.mobile,
+    company_name: profile.companyName,
+    is_active: true
+  });
+
+    setIsLoading(false);
+
+    // 3️⃣ Notify App.jsx
+    onLoginSuccess({
+      id: authUser.id,
+      role: 'OWNER',
+      name: profile.name,
+      companyName: profile.companyName
+    });
   };
 
-  // 2. WORKER LOGIN (Check Database)
+  /* ================= WORKER LOGIN ================= */
+
   const handleWorkerLogin = async () => {
-    if (!workerId) return alert("Please enter your Mobile Number");
+    if (!workerId) return alert("Enter Mobile Number");
     setIsLoading(true);
-    
-    // Check Supabase for this mobile number
+
     const { data, error } = await supabase
-        .from('nexus_workers')
-        .select('*')
-        .eq('mobile', workerId)
-        .maybeSingle();
+      .from('siteboss_workers')
+      .select(`
+        id,
+        name,
+        role,
+        siteboss_projects ( name )
+      `)
+      .eq('mobile', workerId)
+      .maybeSingle();
 
     if (error || !data) {
-        alert("Access Denied. Ask the Owner to add your mobile number in the Staff list.");
-        setIsLoading(false);
-    } else {
-        // Success
-        onLoginSuccess({ 
-            name: data.name, 
-            role: data.role, // 'Supervisor' or 'Store Keeper'
-            projectName: 'Assigned Site', 
-            id: data.id 
-        });
-        setIsLoading(false);
+      setIsLoading(false);
+      return alert("Access Denied. ID not found.");
     }
+
+    setIsLoading(false);
+
+    onLoginSuccess({
+      id: data.id,
+      role: data.role || 'WORKER',
+      name: data.name,
+      projectName: data.siteboss_projects?.name || 'Unassigned'
+    });
   };
 
+  /* ================= UI (UNCHANGED) ================= */
+
   return (
-    <div className="min-h-screen bg-nexus-surface flex items-center justify-center p-4 pb-12 pt-[env(safe-area-inset-top)]">
-      <div className="bg-white w-full max-w-md rounded-3xl shadow-floating overflow-hidden relative">
-        
-        {/* Header */}
-        <div className="bg-nexus-dark p-8 text-center relative">
-          <h1 className="text-2xl font-bold text-white tracking-wide mb-6">NEXUS</h1>
+    <div className="min-h-screen bg-nexus-surface flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-md rounded-3xl shadow-floating overflow-hidden">
+        <div className="bg-nexus-dark p-8 text-center">
+          <h1 className="text-2xl font-bold text-white mb-6">SITEBOSS</h1>
           <div className="flex bg-slate-800/50 p-1 rounded-xl mx-auto max-w-[200px]">
-             <button onClick={() => setLoginMode('OWNER')} className={`flex-1 py-3 text-xs font-bold rounded-lg transition-all ${loginMode === 'OWNER' ? 'bg-nexus-accent text-nexus-dark shadow-lg' : 'text-slate-400'}`}>Owner</button>
-             <button onClick={() => setLoginMode('WORKER')} className={`flex-1 py-3 text-xs font-bold rounded-lg transition-all ${loginMode === 'WORKER' ? 'bg-nexus-accent text-nexus-dark shadow-lg' : 'text-slate-400'}`}>Team</button>
-           </div>
+            <button
+              onClick={() => setLoginMode('OWNER')}
+              className={`flex-1 py-3 text-xs font-bold rounded-lg ${
+                loginMode === 'OWNER'
+                  ? 'bg-nexus-accent text-nexus-dark'
+                  : 'text-slate-400'
+              }`}
+            >
+              Owner
+            </button>
+            <button
+              onClick={() => setLoginMode('WORKER')}
+              className={`flex-1 py-3 text-xs font-bold rounded-lg ${
+                loginMode === 'WORKER'
+                  ? 'bg-nexus-accent text-nexus-dark'
+                  : 'text-slate-400'
+              }`}
+            >
+              Team
+            </button>
+          </div>
         </div>
 
-        <div className="p-8">
-          
-          {/* === OWNER FORM === */}
-          {loginMode === 'OWNER' && (
-            <div className="space-y-5 animate-in fade-in">
-              <div className="text-center mb-2"><h2 className="text-lg font-bold text-nexus-dark">Business Login</h2></div>
-              
+        <div className="p-8 space-y-5">
+          {loginMode === 'OWNER' ? (
+            <>
               <div className="relative">
-                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input type="tel" value={profile.mobile} onChange={(e) => setProfile({...profile, mobile:e.target.value})} placeholder="Mobile Number" className="w-full bg-nexus-surface pl-12 p-4 rounded-xl font-bold outline-none" />
-              </div>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input type="text" value={profile.name} onChange={(e) => setProfile({...profile, name:e.target.value})} placeholder="Full Name" className="w-full bg-nexus-surface pl-12 p-4 rounded-xl font-bold outline-none" />
-              </div>
-              <div className="relative">
-                <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input type="text" value={profile.companyName} onChange={(e) => setProfile({...profile, companyName:e.target.value})} placeholder="Company Name" className="w-full bg-nexus-surface pl-12 p-4 rounded-xl font-bold outline-none" />
+                <Phone className="absolute left-4 top-3 text-slate-400 w-5 h-5" />
+                <input
+                  type="tel"
+                  placeholder="Mobile"
+                  className="w-full pl-12 p-3 bg-nexus-surface rounded-xl outline-none"
+                  value={profile.mobile}
+                  onChange={(e) => setProfile({ ...profile, mobile: e.target.value })}
+                />
               </div>
 
-              <button onClick={handleOwnerLogin} disabled={isLoading} className="w-full bg-nexus-dark text-white font-bold py-4 rounded-xl active:scale-95 transition-transform shadow-lg mt-2">
-                {isLoading ? 'Processing...' : 'Login to Dashboard'}
+              <div className="relative">
+                <User className="absolute left-4 top-3 text-slate-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="Name"
+                  className="w-full pl-12 p-3 bg-nexus-surface rounded-xl outline-none"
+                  value={profile.name}
+                  onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                />
+              </div>
+
+              <div className="relative">
+                <Building2 className="absolute left-4 top-3 text-slate-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="Company"
+                  className="w-full pl-12 p-3 bg-nexus-surface rounded-xl outline-none"
+                  value={profile.companyName}
+                  onChange={(e) =>
+                    setProfile({ ...profile, companyName: e.target.value })
+                  }
+                />
+              </div>
+
+              <button
+                onClick={handleOwnerLogin}
+                disabled={isLoading}
+                className="w-full bg-nexus-dark text-white font-bold py-4 rounded-xl mt-2"
+              >
+                {isLoading ? 'Loading...' : 'Login'}
               </button>
-            </div>
-          )}
-
-          {/* === TEAM FORM === */}
-          {loginMode === 'WORKER' && (
-            <div className="space-y-6 animate-in fade-in pt-4 text-center">
-                <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4"><Key className="w-7 h-7" /></div>
-                <h2 className="text-lg font-bold text-nexus-dark">Site Access</h2>
-                <p className="text-xs text-slate-400 -mt-1 mb-4">Enter Registered Mobile Number</p>
-                <input type="tel" placeholder="e.g. 9876543210" className="w-full bg-nexus-surface text-2xl font-bold text-center py-5 rounded-xl border-2 border-transparent focus:border-nexus-accent outline-none" value={workerId} onChange={(e) => setWorkerId(e.target.value)} />
-                <button onClick={handleWorkerLogin} disabled={isLoading} className="w-full bg-nexus-dark text-white py-4 rounded-xl font-bold active:scale-95 transition-transform">{isLoading ? 'Verifying...' : 'Enter Site'}</button>
+            </>
+          ) : (
+            <div className="text-center">
+              <Key className="mx-auto text-emerald-500 w-8 h-8 mb-4" />
+              <h3 className="font-bold text-nexus-dark text-lg mb-1">Site Access</h3>
+              <p className="text-xs text-slate-400 mb-4">Enter Registered Mobile</p>
+              <input
+                type="tel"
+                placeholder="9876543210"
+                className="w-full text-center text-2xl font-bold p-4 bg-nexus-surface rounded-xl mb-4 outline-none"
+                value={workerId}
+                onChange={(e) => setWorkerId(e.target.value)}
+              />
+              <button
+                onClick={handleWorkerLogin}
+                disabled={isLoading}
+                className="w-full bg-nexus-dark text-white font-bold py-4 rounded-xl"
+              >
+                {isLoading ? 'Verify & Enter' : 'Enter Site'}
+              </button>
             </div>
           )}
         </div>

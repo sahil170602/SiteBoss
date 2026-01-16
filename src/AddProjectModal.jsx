@@ -1,90 +1,184 @@
 import React, { useState } from 'react';
-import { supabase } from './supabaseClient'; // Import DB
-import { X, MapPin, Wallet, Building2, Check } from 'lucide-react';
+import { supabase } from './supabaseClient';
+import { X, MapPin, Wallet, Building2, Check, Navigation, Map } from 'lucide-react';
+import LocationPicker from './LocationPicker';
 
 const AddProjectModal = ({ isOpen, onClose, onSave }) => {
   if (!isOpen) return null;
 
   const [loading, setLoading] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [coords, setCoords] = useState(null);
+
   const [formData, setFormData] = useState({
     name: '',
     location: '',
     budget: '',
-    startDate: new Date().toISOString().split('T')[0]
+    startDate: new Date().toISOString().split('T')[0],
   });
 
-  const handleSubmit = async () => {
-    if (!formData.name || !formData.location) return alert("Project Name & Location are required!");
-    
-    setLoading(true);
-
-    // INSERT INTO SUPABASE
-    const { data, error } = await supabase
-      .from('nexus_projects')
-      .insert([
-        {
-          name: formData.name,
-          location: formData.location,
-          budget: parseFloat(formData.budget) || 0,
-          start_date: formData.startDate,
-          status: 'Active',
-          progress: 0,
-          color: 'bg-emerald-500' // Default color
-        }
-      ])
-      .select();
-
-    if (error) {
-      alert('Error creating project: ' + error.message);
-    } else {
-      // Success! Pass the new project back to parent
-      if(data && data.length > 0) {
-          onSave(data[0]); 
-      }
-      onClose();
-      // Reset Form
-      setFormData({ name: '', location: '', budget: '', startDate: new Date().toISOString().split('T')[0] });
+  const reverseGeocode = async (lat, lng) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+      );
+      const data = await res.json();
+      return data.display_name || '';
+    } catch {
+      return '';
     }
+  };
+
+  const useCurrentLocation = () => {
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      setCoords({ lat: latitude, lng: longitude });
+      const addr = await reverseGeocode(latitude, longitude);
+      setFormData((p) => ({ ...p, location: addr }));
+      setShowMap(true);
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.location) {
+      alert('Project Name & Location required');
+      return;
+    }
+
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { data, error } = await supabase
+      .from('siteboss_projects')
+      .insert([{
+        owner_id: user.id,
+        name: formData.name,
+        location: formData.location,
+        budget: Number(formData.budget) || 0,
+        start_date: formData.startDate,
+        status: 'Active',
+        progress: 0,
+        latitude: coords?.lat,
+        longitude: coords?.lng,
+      }])
+      .select()
+      .single();
+
+    if (!error) {
+      onSave?.(data);
+      onClose();
+    } else alert(error.message);
+
     setLoading(false);
   };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
 
-      <div className="relative bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden animate-in slide-in-from-bottom-10 duration-300 pb-[env(safe-area-inset-bottom)]">
-        
-        <div className="bg-nexus-surface p-6 flex justify-between items-center border-b border-slate-100">
-          <div><h3 className="font-bold text-xl text-nexus-dark">New Project</h3><p className="text-xs text-nexus-muted">Start a new site tracking</p></div>
-          <button onClick={onClose} className="p-2 bg-white rounded-full text-slate-400 active:text-red-500 shadow-sm"><X className="w-5 h-5" /></button>
+      <div
+        className="relative bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* HEADER */}
+        <div className="flex justify-between items-center">
+          <h3 className="text-xl font-bold">New Project</h3>
+          <button onClick={onClose}><X /></button>
         </div>
 
-        <div className="p-6 space-y-5">
-          <div>
-            <label className="block text-xs font-bold text-nexus-muted uppercase mb-2">Project Name</label>
-            <div className="relative"><Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" /><input type="text" placeholder="e.g. Sunset Villas" className="w-full bg-nexus-surface pl-12 p-4 rounded-xl font-bold text-nexus-dark outline-none focus:ring-2 focus:ring-nexus-accent" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} /></div>
-          </div>
+        {/* PROJECT NAME */}
+        <div className="relative">
+          <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            className="w-full bg-slate-100 pl-12 p-4 rounded-xl font-bold"
+            placeholder="Project Name"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          />
+        </div>
 
-          <div>
-            <label className="block text-xs font-bold text-nexus-muted uppercase mb-2">Site Location</label>
-            <div className="relative"><MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" /><input type="text" placeholder="e.g. Nashik Road" className="w-full bg-nexus-surface pl-12 p-4 rounded-xl font-bold text-nexus-dark outline-none focus:ring-2 focus:ring-nexus-accent" value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} /></div>
-          </div>
+        {/* LOCATION */}
+        <div className="relative">
+          <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            className="w-full bg-slate-100 pl-12 p-4 rounded-xl font-bold"
+            placeholder="Site Location"
+            value={formData.location}
+            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+          />
+        </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-nexus-muted uppercase mb-2">Budget (Lakhs)</label>
-              <div className="relative"><Wallet className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" /><input type="number" placeholder="0" className="w-full bg-nexus-surface pl-12 p-4 rounded-xl font-bold text-nexus-dark outline-none focus:ring-2 focus:ring-nexus-accent" value={formData.budget} onChange={(e) => setFormData({...formData, budget: e.target.value})} /></div>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-nexus-muted uppercase mb-2">Start Date</label>
-              <div className="relative"><input type="date" className="w-full bg-nexus-surface p-4 rounded-xl font-bold text-nexus-dark outline-none focus:ring-2 focus:ring-nexus-accent text-sm" value={formData.startDate} onChange={(e) => setFormData({...formData, startDate: e.target.value})} /></div>
-            </div>
-          </div>
+        <div className="flex gap-2">
+          <button
+            onClick={useCurrentLocation}
+            className="flex-1 bg-slate-900 text-white py-2 rounded-lg flex items-center justify-center gap-2"
+          >
+            <Navigation size={16} /> Use Current
+          </button>
 
-          <button onClick={handleSubmit} disabled={loading} className="w-full bg-nexus-dark text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-card active:scale-[0.98] transition-all mt-4">
-            {loading ? 'Creating...' : <><Check className="w-5 h-5" /><span>Launch Project</span></>}
+          <button
+            onClick={() => setShowMap((p) => !p)}
+            className="flex-1 bg-slate-200 py-2 rounded-lg flex items-center justify-center gap-2"
+          >
+            <Map size={16} /> {showMap ? 'Hide Map' : 'Pick on Map'}
           </button>
         </div>
+
+        {/* 🔥 ANIMATED MAP (Blinkit style) */}
+        <div
+          className={`transition-all duration-300 ease-out overflow-hidden ${
+            showMap ? 'max-h-[260px] mt-3' : 'max-h-0'
+          }`}
+        >
+          <div
+            className="relative h-[240px] w-full rounded-xl overflow-hidden border"
+            style={{ touchAction: 'pan-x pan-y' }}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+          >
+            <LocationPicker
+              onSelect={async ({ lat, lng }) => {
+                setCoords({ lat, lng });
+                const addr = await reverseGeocode(lat, lng);
+                setFormData((p) => ({ ...p, location: addr }));
+              }}
+            />
+
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white/90 px-3 py-1 rounded-full text-xs font-bold shadow">
+              Drag map or tap to select
+            </div>
+          </div>
+        </div>
+
+        {/* BUDGET & DATE */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="relative">
+            <Wallet className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="number"
+              placeholder="Budget ₹"
+              className="w-full bg-slate-100 pl-12 p-4 rounded-xl font-bold"
+              value={formData.budget}
+              onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+            />
+          </div>
+
+          <input
+            type="date"
+            className="bg-slate-100 p-4 rounded-xl font-bold"
+            value={formData.startDate}
+            onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+          />
+        </div>
+
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold flex justify-center gap-2"
+        >
+          <Check /> Launch Project
+        </button>
       </div>
     </div>
   );

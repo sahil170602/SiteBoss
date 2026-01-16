@@ -1,8 +1,6 @@
 {
-  "appId": "com.nexus.app",
-  "appName": "Nexus Site Manager",
+  "appId": "com.siteboss.app",
+  "appName": "SiteBoss",
   "webDir": "dist",
-  "server": {
-    "androidScheme": "https"
-  }
+  "bundledWebRuntime": false
 }
